@@ -154,6 +154,6 @@ end)
 RunService.RenderStepped:Connect(function()
     local targetHead = getClosestEnemy()
     if targetHead then
-        smoothAim(targetHead, 0.1)
+        smoothAim(targetHead, 0.04)
     end
 end)
