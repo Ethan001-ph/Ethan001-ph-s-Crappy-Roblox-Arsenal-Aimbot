@@ -1,0 +1,159 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Setup ScreenGui
+local screenGui = LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("ScreenGui")
+if not screenGui then
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "ScreenGui"
+    screenGui.Parent = LocalPlayer.PlayerGui
+end
+
+-- Create the cursor circle
+local cursorCircle = Instance.new("Frame")
+cursorCircle.Size = UDim2.new(0, 65, 0, 65)
+cursorCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+cursorCircle.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+cursorCircle.BackgroundTransparency = 0.8  -- Adjusted transparency to 0.8
+cursorCircle.BorderSizePixel = 0
+cursorCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+cursorCircle.Parent = screenGui
+
+-- Move the cursor circle to mouse position
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        cursorCircle.Position = UDim2.new(0, input.Position.X, 0, input.Position.Y)
+    end
+end)
+
+-- Create highlight and nametag for a character
+local function highlightCharacter(character)
+    if not character then return end
+    local player = Players:GetPlayerFromCharacter(character)
+    if not player then return end
+
+    if not character:FindFirstChild("AdminHighlight") then
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "AdminHighlight"
+        highlight.FillColor = Color3.fromRGB(255, 0, 0)
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Parent = character
+    end
+
+    local head = character:FindFirstChild("Head")
+    if head and not head:FindFirstChild("AdminNametag") then
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "AdminNametag"
+        billboard.Size = UDim2.new(0, 200, 0, 50)
+        billboard.StudsOffset = Vector3.new(0, 3, 0)
+        billboard.Adornee = head
+        billboard.AlwaysOnTop = true
+        billboard.Parent = head
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, 0, 0.7, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = player.Name
+        nameLabel.TextColor3 = Color3.new(1, 1, 1)
+        nameLabel.TextStrokeTransparency = 0
+        nameLabel.Font = Enum.Font.SourceSansBold
+        nameLabel.TextScaled = true
+        nameLabel.Parent = billboard
+
+        local hpLabel = Instance.new("TextLabel")
+        hpLabel.Size = UDim2.new(1, 0, 0.3, 0)
+        hpLabel.Position = UDim2.new(0, 0, 0.7, 0)
+        hpLabel.BackgroundTransparency = 1
+        hpLabel.Text = "HP: nil"
+        hpLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+        hpLabel.TextStrokeTransparency = 0
+        hpLabel.Font = Enum.Font.SourceSansBold
+        hpLabel.TextScaled = true
+        hpLabel.Parent = billboard
+
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            hpLabel.Text = "HP: " .. math.floor(humanoid.Health)
+            humanoid.HealthChanged:Connect(function()
+                hpLabel.Text = "HP: " .. math.floor(humanoid.Health)
+            end)
+        end
+    end
+end
+
+-- World to screen function
+local function worldToViewport(part)
+    local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+    return Vector2.new(pos.X, pos.Y), onScreen
+end
+
+-- Find closest valid enemy head
+local function getClosestEnemy()
+    local mousePos = UserInputService:GetMouseLocation()
+    local closestEnemy = nil
+    local closestDistance = 65 -- max pixels around cursor
+    local maxStudDistance = 300
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team and player.Character then
+            local head = player.Character:FindFirstChild("Head")
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if head and humanoid and humanoid.Health > 0 then
+                -- Check screen position
+                local screenPos, onScreen = worldToViewport(head)
+                if onScreen then
+                    local dist = (mousePos - screenPos).Magnitude
+                    -- Check 300 studs max
+                    local realDistance = (Camera.CFrame.Position - head.Position).Magnitude
+                    if dist < closestDistance and realDistance <= maxStudDistance then
+                        closestDistance = dist
+                        closestEnemy = head
+                    end
+                end
+            end
+        end
+    end
+
+    return closestEnemy
+end
+
+-- Smoothly move the camera to the target
+local function smoothAim(targetHead, smoothingFactor)
+    if targetHead then
+        local targetPos = targetHead.Position
+        local cameraPos = Camera.CFrame.Position
+        local direction = (targetPos - cameraPos).Unit
+        local newPos = cameraPos + direction * smoothingFactor
+        Camera.CFrame = CFrame.new(newPos, targetPos)
+    end
+end
+
+-- Setup highlights and nametags
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer and player.Character then
+        highlightCharacter(player.Character)
+    end
+    player.CharacterAdded:Connect(function(character)
+        task.wait(1)
+        highlightCharacter(character)
+    end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(character)
+        task.wait(1)
+        highlightCharacter(character)
+    end)
+end)
+
+-- Main loop
+RunService.RenderStepped:Connect(function()
+    local targetHead = getClosestEnemy()
+    if targetHead then
+        smoothAim(targetHead, 0.1)
+    end
+end)
